@@ -18,9 +18,14 @@ const REDIS_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_
 const REDIS_TOKEN = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || "";
 const KEY = process.env.PLANNER_KEY || "";
 
-const REV_KEY = "planner:rev";
-const ITEMS_KEY = "planner:items";
-const LOGS_KEY = "planner:logs";
+/* Two deployments can share one Upstash database safely by setting
+   PLANNER_NAMESPACE differently on each (e.g. "planner" and "test").
+   Leave it unset and the keys stay exactly as they were. */
+const NS = (process.env.PLANNER_NAMESPACE || "planner").replace(/[^A-Za-z0-9_-]/g, "") || "planner";
+
+const REV_KEY = `${NS}:rev`;
+const ITEMS_KEY = `${NS}:items`;
+const LOGS_KEY = `${NS}:logs`;
 
 /* --------------------------- redis over REST ----------------------- */
 
@@ -112,8 +117,9 @@ export default async function handler(req, res) {
   if (!REDIS_URL || !REDIS_TOKEN) {
     return res.status(503).json({
       error:
-        "No database connected. Add an Upstash Redis integration in the Vercel dashboard, " +
-        "or set KV_REST_API_URL and KV_REST_API_TOKEN, then redeploy.",
+        "No database connected. In this Vercel project: Storage \u2192 connect an Upstash Redis " +
+        "database, then redeploy. (Storage and environment variables belong to the project, " +
+        "so a copied project starts without them.) Needs the REST URL, not the rediss:// one.",
     });
   }
 
