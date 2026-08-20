@@ -14,8 +14,37 @@
  *  No npm dependencies — talks to Upstash over plain fetch.
  * ------------------------------------------------------------------ */
 
-const REDIS_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || "";
-const REDIS_TOKEN = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || "";
+/* Vercel lets you give an Upstash database a custom environment-variable
+   prefix (e.g. EUAN_PLANNER_KV_REST_API_URL). Rather than demand exact
+   names, find whichever pair exists and use it. The read-only token is
+   deliberately ignored: this function has to write. */
+function resolveRedis() {
+  const SUFFIXES = ["KV_REST_API", "UPSTASH_REDIS_REST"];
+
+  for (const suffix of SUFFIXES) {
+    // exact, unprefixed names win
+    const url = process.env[`${suffix}_URL`];
+    const token = process.env[`${suffix}_TOKEN`];
+    if (url && token) return { url, token, via: `${suffix}_URL` };
+  }
+
+  for (const suffix of SUFFIXES) {
+    const urlKey = Object.keys(process.env).find(
+      (k) => k.endsWith(`${suffix}_URL`) && String(process.env[k] || "").startsWith("https://")
+    );
+    if (!urlKey) continue;
+    const prefix = urlKey.slice(0, urlKey.length - `${suffix}_URL`.length);
+    const tokenKey = `${prefix}${suffix}_TOKEN`;      // never the _READ_ONLY_TOKEN
+    const token = process.env[tokenKey];
+    if (token) return { url: process.env[urlKey], token, via: urlKey };
+  }
+
+  return { url: "", token: "", via: null };
+}
+
+const REDIS = resolveRedis();
+const REDIS_URL = REDIS.url;
+const REDIS_TOKEN = REDIS.token;
 const KEY = process.env.PLANNER_KEY || "";
 
 /* Two deployments can share one Upstash database safely by setting
@@ -117,9 +146,9 @@ export default async function handler(req, res) {
   if (!REDIS_URL || !REDIS_TOKEN) {
     return res.status(503).json({
       error:
-        "No database connected. In this Vercel project: Storage \u2192 connect an Upstash Redis " +
-        "database, then redeploy. (Storage and environment variables belong to the project, " +
-        "so a copied project starts without them.) Needs the REST URL, not the rediss:// one.",
+        "No database connected. This function looks for a REST url and token ending in " +
+        "KV_REST_API_URL/_TOKEN or UPSTASH_REDIS_REST_URL/_TOKEN, with or without a prefix. " +
+        "Open /api/health to see which storage variables this deployment can actually see.",
     });
   }
 
